@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pandas
+numpy
+lxml
+plotly
+sqlalchemy
+requests
+pytest
+httpx
+joblib
+lightgbm
+scikit-learn
+jinja2
+python-multipart
