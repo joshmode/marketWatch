@@ -5,10 +5,10 @@
 ## Data Pipeline & ML Architecture
 
 ```text
-[span_0](start_span)[ Macroeconomic Data Streams ] ──► ( Ingestion & Cleaning Pipeline )[span_0](end_span)
+[ Macroeconomic Data Streams ] ──► ( Ingestion & Cleaning Pipeline )
                                           │
                                           ▼
-[span_1](start_span)[ ML Regime Detection Model  ] ──► Identifies latent market structures[span_1](end_span)
+[ ML Regime Detection Model  ] ──► Identifies latent market structures
                                           │
                                           ▼
 ( Rule-Based Logic Engine    ) ──► Computes deterministic state outputs
