@@ -1,3 +1,4 @@
+import html
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -51,8 +52,9 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
 
         figure = create_dashboard(dataset, live_data, macro_summary)
         chart_json = figure.to_json()
+        safe_chart_json = html.escape(chart_json)
 
-        html = f"""
+        html_content = f"""
         <html>
         <head>
             <title>marketWatch by @joshmode</title>
@@ -77,20 +79,22 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
                         {''.join([f"<tr><td>{k}</td><td>{v['value']}</td><td>{v['date']}</td></tr>" for k, v in macro_summary.items()])}
                     </table>
                 </div>
-                <div id="chart"></div>
+                <div id="chart" data-chart="{safe_chart_json}"></div>
             </div>
         </div>
 
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <script>
-        var chart = {chart_json};
+        var chartDiv = document.getElementById('chart');
+        var chartData = chartDiv.getAttribute('data-chart');
+        var chart = JSON.parse(chartData);
         Plotly.newPlot('chart', chart.data, chart.layout);
         </script>
         </body>
         </html>
         """
 
-        return HTMLResponse(html)
+        return HTMLResponse(html_content)
 
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
