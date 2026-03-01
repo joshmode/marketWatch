@@ -1,8 +1,9 @@
 import os
 import logging
-import requests
+import httpx
 import pandas as pd
 import numpy as np
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
@@ -35,11 +36,11 @@ def _series_or_nan(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.Series(index=df.index, dtype=float)
 
 
-def fetch_series(series_id: str) -> pd.Series:
+async def fetch_series(client: httpx.AsyncClient, series_id: str) -> tuple[str, pd.Series]:
     now = datetime.now()
 
     if series_id in _cache and now < _cache_expiry.get(series_id, datetime.min):
-        return _cache[series_id]
+        return series_id, _cache[series_id]
 
     params = {
         "series_id": series_id,
@@ -48,7 +49,7 @@ def fetch_series(series_id: str) -> pd.Series:
     }
 
     try:
-        response = requests.get(FRED_URL, params=params, timeout=10)
+        response = await client.get(FRED_URL, params=params, timeout=10)
         response.raise_for_status()
 
         observations = response.json().get("observations", [])
@@ -64,19 +65,29 @@ def fetch_series(series_id: str) -> pd.Series:
         _cache[series_id] = series
         _cache_expiry[series_id] = now + timedelta(hours=24)
 
-        return series
+        return series_id, series
 
     except Exception as e:
         logger.error(f"Failed to fetch {series_id}: {e}")
-        return pd.Series(dtype=float)
+        return series_id, pd.Series(dtype=float)
 
 
-def load_macro_data() -> pd.DataFrame:
+async def load_macro_data() -> pd.DataFrame:
     if not FRED_API_KEY:
         logger.warning("FRED_API_KEY not set. Running in neutral macro mode.")
         return pd.DataFrame()
 
-    data = {name: fetch_series(code) for name, code in SERIES.items()}
+    async with httpx.AsyncClient() as client:
+        tasks = [fetch_series(client, code) for name, code in SERIES.items()]
+        results = await asyncio.gather(*tasks)
+
+    data = {}
+    code_to_name = {v: k for k, v in SERIES.items()}
+    for series_id, series in results:
+        name = code_to_name.get(series_id)
+        if name:
+            data[name] = series
+
     macro = pd.DataFrame(data)
 
     macro = macro.ffill()
@@ -85,11 +96,11 @@ def load_macro_data() -> pd.DataFrame:
     return macro
 
 
-def get_macro_summary() -> Dict[str, Any]:
+async def get_macro_summary() -> Dict[str, Any]:
     if not FRED_API_KEY:
         return {k: {"value": "N/A", "date": "No API Key"} for k in SERIES.keys()}
 
-    macro = load_macro_data()
+    macro = await load_macro_data()
     if macro.empty:
         return {k: {"value": "N/A", "date": "No Data"} for k in SERIES.keys()}
 
@@ -109,8 +120,8 @@ def get_macro_summary() -> Dict[str, Any]:
     return summary
 
 
-def enrich_macro_data(market_data: pd.DataFrame) -> pd.DataFrame:
-    macro = load_macro_data()
+async def enrich_macro_data(market_data: pd.DataFrame) -> pd.DataFrame:
+    macro = await load_macro_data()
 
     if macro.empty:
         aligned = pd.DataFrame(index=market_data.index)
