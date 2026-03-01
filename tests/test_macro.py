@@ -6,7 +6,7 @@ from app.macro import load_macro_data, enrich_macro_data
 
 @pytest.fixture
 def mock_fetch_series():
-    with patch("app.macro._fetch_series") as mock:
+    with patch("app.macro.fetch_series") as mock:
         yield mock
 
 @patch("app.macro.FRED_API_KEY", "fake_key")

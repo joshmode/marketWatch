@@ -25,6 +25,21 @@ SERIES = {
     "dollar": "DTWEXBGS",
 }
 
+MACRO_SCORE_WEIGHTS = {
+    "growth": 0.30,
+    "inflation": -0.25,
+    "yield_curve": 0.20,
+    "credit": -0.15,
+    "unemployment": -0.10,
+}
+
+RECESSION_SIGNAL_WEIGHTS = {
+    "yield_curve": -0.4,
+    "credit": 0.3,
+    "unemployment": 0.3,
+    "policy_tightness": 0.2,
+}
+
 _cache: Dict[str, Any] = {}
 _cache_expiry: Dict[str, datetime] = {}
 
@@ -162,19 +177,12 @@ def enrich_macro_data(market_data: pd.DataFrame) -> pd.DataFrame:
         std = series.rolling(252).std()
         aligned[f"{name}_z"] = (series - mean) / std
 
-    aligned["macro_score"] = (
-        +0.30 * aligned.get("growth_z")
-        -0.25 * aligned.get("inflation_z")
-        +0.20 * aligned.get("yield_curve_z")
-        -0.15 * aligned.get("credit_z")
-        -0.10 * aligned.get("unemployment_z")
+    aligned["macro_score"] = sum(
+        weight * aligned.get(f"{key}_z") for key, weight in MACRO_SCORE_WEIGHTS.items()
     )
 
-    recession_signal = (
-        -0.4 * aligned.get("yield_curve_z")
-        +0.3 * aligned.get("credit_z")
-        +0.3 * aligned.get("unemployment_z")
-        +0.2 * aligned.get("policy_tightness_z")
+    recession_signal = sum(
+        weight * aligned.get(f"{key}_z") for key, weight in RECESSION_SIGNAL_WEIGHTS.items()
     )
 
     aligned["recession_probability"] = 1 / (1 + np.exp(-recession_signal))
