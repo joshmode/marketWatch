@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -16,10 +17,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Macro Signal Engine")
 
 
-def build_market_dataset(ticker: str, period: str):
-    price_data = fetch_data(ticker, period)
+async def build_market_dataset(ticker: str, period: str):
+    price_data = await fetch_data(ticker, period)
     price_data = add_indicators(price_data)
-    price_data = enrich_macro_data(price_data)
+    price_data = await enrich_macro_data(price_data)
 
     regime = compute_bayesian_regime(price_data)
     price_data = price_data.join(regime)
@@ -28,26 +29,24 @@ def build_market_dataset(ticker: str, period: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
+async def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
     try:
-        dataset = build_market_dataset(ticker, period)
+        dataset = await build_market_dataset(ticker, period)
 
         live_symbols = ["^GSPC", "^IXIC", "^VIX"]
-        live_data = []
 
-        for symbol in live_symbols:
-            info = fetch_live_ticker(symbol)
+        tasks = [fetch_live_ticker(symbol) for symbol in live_symbols]
+        live_data = await asyncio.gather(*tasks)
 
-            if symbol == "^GSPC":
+        for info in live_data:
+            if info["symbol"] == "^GSPC":
                 info["symbol"] = "S&P 500"
-            elif symbol == "^IXIC":
+            elif info["symbol"] == "^IXIC":
                 info["symbol"] = "NASDAQ"
-            elif symbol == "^VIX":
+            elif info["symbol"] == "^VIX":
                 info["symbol"] = "VIX"
 
-            live_data.append(info)
-
-        macro_summary = get_macro_summary()
+        macro_summary = await get_macro_summary()
 
         figure = create_dashboard(dataset, live_data, macro_summary)
         chart_json = figure.to_json()
@@ -98,9 +97,9 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
 
 
 @app.get("/api/overlay")
-def macro_overlay(ticker: str = "^GSPC", period: str = "2y"):
+async def macro_overlay(ticker: str = "^GSPC", period: str = "2y"):
     try:
-        dataset = build_market_dataset(ticker, period)
+        dataset = await build_market_dataset(ticker, period)
         overlay = build_overlay_signal(dataset)
         return JSONResponse(overlay)
 

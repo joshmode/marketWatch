@@ -1,6 +1,7 @@
 import os
 import joblib
 import logging
+import asyncio
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
@@ -101,7 +102,7 @@ def train_model(ticker: str = "^GSPC", market_data: pd.DataFrame = None):
     logger.info(f"training model for {ticker}")
 
     if market_data is None:
-        raw = fetch_data(ticker, period="5y")
+        raw = asyncio.run(fetch_data(ticker, period="5y"))
         market_data = add_indicators(raw)
 
     features = prepare_features(market_data)
