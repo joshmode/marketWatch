@@ -22,7 +22,7 @@ def run_backtest(market_data: pd.DataFrame, initial_capital: float = 10000.0) ->
 
     try:
         ml_score = get_historical_predictions(backtest)
-    except Exception:
+    except (ValueError, KeyError):
         ml_score = 0.0
 
     backtest["ML_Score"] = ml_score
