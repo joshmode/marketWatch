@@ -4,7 +4,7 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ SERIES = {
 
 _cache: Dict[str, Any] = {}
 _cache_expiry: Dict[str, datetime] = {}
+
+_df_cache: Optional[pd.DataFrame] = None
+_df_cache_expiry: datetime = datetime.min
 
 
 def _series_or_nan(df: pd.DataFrame, column: str) -> pd.Series:
@@ -72,6 +75,12 @@ def fetch_series(series_id: str) -> pd.Series:
 
 
 def load_macro_data() -> pd.DataFrame:
+    global _df_cache, _df_cache_expiry
+    now = datetime.now()
+
+    if _df_cache is not None and now < _df_cache_expiry:
+        return _df_cache.copy()
+
     if not FRED_API_KEY:
         logger.warning("FRED_API_KEY not set. Running in neutral macro mode.")
         return pd.DataFrame()
@@ -79,8 +88,12 @@ def load_macro_data() -> pd.DataFrame:
     data = {name: fetch_series(code) for name, code in SERIES.items()}
     macro = pd.DataFrame(data)
 
+    macro.sort_index(inplace=True)
     macro = macro.ffill()
     macro.dropna(how="all", inplace=True)
+
+    _df_cache = macro.copy()
+    _df_cache_expiry = now + timedelta(hours=24)
 
     return macro
 
