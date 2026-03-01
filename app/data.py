@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 import time
 import random
+import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -79,9 +80,10 @@ def fetch_data(ticker: str = "^GSPC", period: str = "2y", interval: str = "1d") 
         "includeAdjustedClose": "true",
     }
 
+    t = urllib.parse.quote(ticker)
     endpoints = [
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
-        f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}",
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{t}",
+        f"https://query2.finance.yahoo.com/v8/finance/chart/{t}",
     ]
 
     last_error = None
@@ -144,9 +146,10 @@ def fetch_live_ticker(ticker: str) -> Dict[str, Any]:
         "includePrePost": "true",
     }
 
+    t = urllib.parse.quote(ticker)
     endpoints = [
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
-        f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}",
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{t}",
+        f"https://query2.finance.yahoo.com/v8/finance/chart/{t}",
     ]
 
     for url in endpoints:
