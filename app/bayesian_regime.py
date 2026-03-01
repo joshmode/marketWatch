@@ -2,6 +2,31 @@ import numpy as np
 import pandas as pd
 
 
+REGIME_TEMPLATES = {
+    "Expansion": {
+        "macro_score": (1.0, 0.8),
+        "credit_stress_z": (-0.5, 1.0),
+        "curve_slope": (1.0, 1.0),
+        "macro_liquidity_z": (-0.5, 1.0),
+        "dollar_regime_z": (-0.2, 1.0),
+    },
+    "Slowdown": {
+        "macro_score": (0.0, 0.7),
+        "credit_stress_z": (0.5, 1.0),
+        "curve_slope": (0.0, 1.0),
+        "macro_liquidity_z": (0.5, 1.0),
+        "dollar_regime_z": (0.5, 1.0),
+    },
+    "Stress": {
+        "macro_score": (-1.5, 0.8),
+        "credit_stress_z": (2.0, 1.2),
+        "curve_slope": (-1.0, 1.5),
+        "macro_liquidity_z": (1.5, 1.2),
+        "dollar_regime_z": (1.5, 1.2),
+    },
+}
+
+
 def _normal_pdf(x, mean, std):
     std = max(std, 1e-6)
     return np.exp(-0.5 * ((x - mean) / std) ** 2) / (std * np.sqrt(2 * np.pi))
@@ -20,32 +45,7 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
         if field not in market_data.columns:
             market_data[field] = 0.0
 
-    # each regime defined by how it "expects" each macro input to behave
-    regime_templates = {
-        "Expansion": {
-            "macro_score": (1.0, 0.8),
-            "credit_stress_z": (-0.5, 1.0),
-            "curve_slope": (1.0, 1.0),
-            "macro_liquidity_z": (-0.5, 1.0),
-            "dollar_regime_z": (-0.2, 1.0),
-        },
-        "Slowdown": {
-            "macro_score": (0.0, 0.7),
-            "credit_stress_z": (0.5, 1.0),
-            "curve_slope": (0.0, 1.0),
-            "macro_liquidity_z": (0.5, 1.0),
-            "dollar_regime_z": (0.5, 1.0),
-        },
-        "Stress": {
-            "macro_score": (-1.5, 0.8),
-            "credit_stress_z": (2.0, 1.2),
-            "curve_slope": (-1.0, 1.5),
-            "macro_liquidity_z": (1.5, 1.2),
-            "dollar_regime_z": (1.5, 1.2),
-        },
-    }
-
-    regime_names = list(regime_templates.keys())
+    regime_names = list(REGIME_TEMPLATES.keys())
     prior = np.full(len(regime_names), 1 / len(regime_names))
 
     probability_path = []
@@ -54,7 +54,7 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
         likelihoods = []
 
         for regime in regime_names:
-            regime_definition = regime_templates[regime]
+            regime_definition = REGIME_TEMPLATES[regime]
 
             likelihood = 1.0
             for factor, (mean, std) in regime_definition.items():
