@@ -39,8 +39,9 @@ def test_dashboard_endpoint(mock_create_dashboard, mock_backtest, mock_bayes, mo
 @patch("app.main.add_indicators")
 @patch("app.main.enrich_macro_data")
 @patch("app.main.compute_bayesian_regime")
+@patch("app.main.run_backtest")
 @patch("app.main.build_overlay_signal")
-def test_overlay_endpoint(mock_build_overlay, mock_bayes, mock_enrich, mock_indicators, mock_fetch):
+def test_overlay_endpoint(mock_build_overlay, mock_backtest, mock_bayes, mock_enrich, mock_indicators, mock_fetch):
     # Mock data
     mock_df = pd.DataFrame({"Close": [100, 101], "Open": [99, 100]}, index=pd.date_range("2021-01-01", periods=2))
     mock_fetch.return_value = mock_df
@@ -50,8 +51,19 @@ def test_overlay_endpoint(mock_build_overlay, mock_bayes, mock_enrich, mock_indi
     mock_bayes_df = pd.DataFrame({"P_Expansion": [0.5, 0.5]}, index=mock_df.index)
     mock_bayes.return_value = mock_bayes_df
 
+    mock_backtest.return_value = mock_df.join(mock_bayes_df)
+
     mock_build_overlay.return_value = {"signal": "buy"}
 
     response = client.get("/api/overlay")
     assert response.status_code == 200
     assert response.json() == {"signal": "buy"}
+
+@patch("app.main.fetch_data")
+def test_dashboard_endpoint_error_handling(mock_fetch):
+    mock_fetch.side_effect = Exception("Test data fetch error")
+
+    response = client.get("/")
+    assert response.status_code == 500
+    assert "<h1>Error</h1>" in response.text
+    assert "Test data fetch error" in response.text
