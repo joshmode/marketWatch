@@ -19,7 +19,17 @@ def ensure_cache_directory():
 
 def cache_file_path(ticker: str, period: str) -> Path:
     safe_ticker = ticker.replace("^", "").replace(".", "_")
-    return CACHE_DIR / f"{safe_ticker}_{period}.pkl"
+
+    safe_ticker = safe_ticker.replace("/", "_").replace("\\", "_")
+    safe_period = period.replace("/", "_").replace("\\", "_")
+
+    filename = f"{safe_ticker}_{safe_period}.pkl"
+    path = CACHE_DIR / filename
+
+    if not path.resolve().is_relative_to(CACHE_DIR.resolve()):
+        raise ValueError("Invalid path traversal detected")
+
+    return path
 
 
 def load_cached_data(ticker: str, period: str) -> Optional[pd.DataFrame]:
