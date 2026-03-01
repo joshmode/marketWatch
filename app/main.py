@@ -1,8 +1,9 @@
 import logging
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from app.data import fetch_data, fetch_live_ticker
+from app.data import fetch_data, fetch_live_ticker, fetch_live_ticker_async
 from app.indicators import add_indicators
 from app.macro import enrich_macro_data, get_macro_summary
 from app.bayesian_regime import compute_bayesian_regime
@@ -33,11 +34,16 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
         dataset = build_market_dataset(ticker, period)
 
         live_symbols = ["^GSPC", "^IXIC", "^VIX"]
+
+        async def fetch_all():
+            tasks = [fetch_live_ticker_async(sym) for sym in live_symbols]
+            return await asyncio.gather(*tasks)
+
+        fetched_data = asyncio.run(fetch_all())
+
         live_data = []
-
-        for symbol in live_symbols:
-            info = fetch_live_ticker(symbol)
-
+        for info in fetched_data:
+            symbol = info.get("symbol")
             if symbol == "^GSPC":
                 info["symbol"] = "S&P 500"
             elif symbol == "^IXIC":
