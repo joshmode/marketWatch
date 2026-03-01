@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -28,16 +29,19 @@ def build_market_dataset(ticker: str, period: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
+async def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
     try:
         dataset = build_market_dataset(ticker, period)
 
         live_symbols = ["^GSPC", "^IXIC", "^VIX"]
+
+        # Concurrently fetch all live ticker info
+        tasks = [fetch_live_ticker(symbol) for symbol in live_symbols]
+        live_data_results = await asyncio.gather(*tasks)
+
         live_data = []
 
-        for symbol in live_symbols:
-            info = fetch_live_ticker(symbol)
-
+        for info, symbol in zip(live_data_results, live_symbols):
             if symbol == "^GSPC":
                 info["symbol"] = "S&P 500"
             elif symbol == "^IXIC":
