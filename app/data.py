@@ -2,6 +2,8 @@ import logging
 import pickle
 import pandas as pd
 import requests
+import httpx
+import asyncio
 import time
 import random
 from datetime import datetime, timedelta
@@ -137,7 +139,7 @@ def fetch_data(ticker: str = "^GSPC", period: str = "2y", interval: str = "1d") 
     raise RuntimeError(f"Data fetch failed for {ticker}: {last_error}")
 
 
-def fetch_live_ticker(ticker: str) -> Dict[str, Any]:
+async def fetch_live_ticker(ticker: str) -> Dict[str, Any]:
     params = {
         "range": "1d",
         "interval": "1m",
@@ -149,50 +151,49 @@ def fetch_live_ticker(ticker: str) -> Dict[str, Any]:
         f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}",
     ]
 
-    for url in endpoints:
-        try:
-            time.sleep(random.uniform(0.5, 1.5))
+    async with httpx.AsyncClient() as client:
+        for url in endpoints:
+            try:
+                await asyncio.sleep(random.uniform(0.5, 1.5))
 
-            response = requests.get(url, params=params, headers=request_headers(), timeout=10)
-            if response.status_code == 429:
+                response = await client.get(url, params=params, headers=request_headers(), timeout=10)
+                if response.status_code == 429:
+                    continue
+
+                response.raise_for_status()
+                payload = response.json()
+
+                result = payload.get("chart", {}).get("result", [])
+                if not result:
+                    continue
+
+                meta = result[0].get("meta", {})
+                price = meta.get("regularMarketPrice")
+                prev_close = meta.get("chartPreviousClose")
+
+                if price is None:
+                    quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    closes = quote.get("close", [])
+                    valid_closes = [c for c in closes if c is not None]
+                    if valid_closes:
+                        price = valid_closes[-1]
+
+                if price is None or prev_close is None:
+                    continue
+
+                change = price - prev_close
+                pct_change = (change / prev_close) * 100
+
+                return {
+                    "symbol": ticker,
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "pct_change": round(pct_change, 2),
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            except Exception:
                 continue
-
-            response.raise_for_status()
-            payload = response.json()
-
-            result = payload.get("chart", {}).get("result", [])
-            if not result:
-                continue
-
-            meta = result[0].get("meta", {})
-            price = meta.get("regularMarketPrice")
-            prev_close = meta.get("chartPreviousClose")
-
-            if price is None:
-                quote = result[0].get("indicators", {}).get("quote", [{}])[0]
-                closes = quote.get("close", [])
-                valid_closes = [c for c in closes if c is not None]
-                if valid_closes:
-                    price = valid_closes[-1]
-
-            if price is None or prev_close is None:
-                continue
-
-            change = price - prev_close
-            pct_change = (change / prev_close) * 100
-
-
-
-            return {
-                "symbol": ticker,
-                "price": round(price, 2),
-                "change": round(change, 2),
-                "pct_change": round(pct_change, 2),
-                "timestamp": datetime.now().isoformat(),
-            }
-
-        except Exception:
-            continue
 
     return {
         "symbol": ticker,

@@ -19,7 +19,7 @@ def test_dashboard_endpoint(mock_create_dashboard, mock_backtest, mock_bayes, mo
     mock_indicators.return_value = mock_df
     mock_enrich.return_value = mock_df
 
-    mock_bayes_df = pd.DataFrame({"P_Expansion": [0.5, 0.5]}, index=mock_df.index)
+    mock_bayes_df = pd.DataFrame({"P_Expansion": [0.5, 0.5], "P_Slowdown": [0.25, 0.25], "P_Stress": [0.25, 0.25]}, index=mock_df.index)
     mock_bayes.return_value = mock_bayes_df
 
     mock_backtest.return_value = mock_df.join(mock_bayes_df)
@@ -47,7 +47,7 @@ def test_overlay_endpoint(mock_build_overlay, mock_bayes, mock_enrich, mock_indi
     mock_indicators.return_value = mock_df
     mock_enrich.return_value = mock_df
 
-    mock_bayes_df = pd.DataFrame({"P_Expansion": [0.5, 0.5]}, index=mock_df.index)
+    mock_bayes_df = pd.DataFrame({"P_Expansion": [0.5, 0.5], "P_Slowdown": [0.25, 0.25], "P_Stress": [0.25, 0.25]}, index=mock_df.index)
     mock_bayes.return_value = mock_bayes_df
 
     mock_build_overlay.return_value = {"signal": "buy"}

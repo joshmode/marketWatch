@@ -1,6 +1,8 @@
 import os
 import logging
 import requests
+import httpx
+import asyncio
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -35,7 +37,7 @@ def _series_or_nan(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.Series(index=df.index, dtype=float)
 
 
-def fetch_series(series_id: str) -> pd.Series:
+async def fetch_series(series_id: str, client: httpx.AsyncClient) -> pd.Series:
     now = datetime.now()
 
     if series_id in _cache and now < _cache_expiry.get(series_id, datetime.min):
@@ -48,18 +50,21 @@ def fetch_series(series_id: str) -> pd.Series:
     }
 
     try:
-        response = requests.get(FRED_URL, params=params, timeout=10)
+        response = await client.get(FRED_URL, params=params, timeout=10)
         response.raise_for_status()
 
         observations = response.json().get("observations", [])
-        df = pd.DataFrame(observations)
 
-        if df.empty:
-            series = pd.Series(dtype=float)
-        else:
+        # Move CPU-bound pandas operations to thread pool
+        def process_df(obs):
+            df = pd.DataFrame(obs)
+            if df.empty:
+                return pd.Series(dtype=float)
             df["value"] = pd.to_numeric(df["value"], errors="coerce")
             df["date"] = pd.to_datetime(df["date"])
-            series = df.set_index("date")["value"]
+            return df.set_index("date")["value"]
+
+        series = process_df(observations)
 
         _cache[series_id] = series
         _cache_expiry[series_id] = now + timedelta(hours=24)
@@ -71,16 +76,24 @@ def fetch_series(series_id: str) -> pd.Series:
         return pd.Series(dtype=float)
 
 
-def load_macro_data() -> pd.DataFrame:
+async def load_macro_data() -> pd.DataFrame:
     if not FRED_API_KEY:
         logger.warning("FRED_API_KEY not set. Running in neutral macro mode.")
         return pd.DataFrame()
 
-    data = {name: fetch_series(code) for name, code in SERIES.items()}
-    macro = pd.DataFrame(data)
+    async with httpx.AsyncClient() as client:
+        names = list(SERIES.keys())
+        codes = list(SERIES.values())
+        results = await asyncio.gather(*(fetch_series(code, client) for code in codes))
 
-    macro = macro.ffill()
-    macro.dropna(how="all", inplace=True)
+        def combine_results(n, r):
+            data = dict(zip(n, r))
+            macro = pd.DataFrame(data)
+            macro = macro.ffill()
+            macro.dropna(how="all", inplace=True)
+            return macro
+
+        macro = combine_results(names, results)
 
     return macro
 
@@ -89,7 +102,24 @@ def get_macro_summary() -> Dict[str, Any]:
     if not FRED_API_KEY:
         return {k: {"value": "N/A", "date": "No API Key"} for k in SERIES.keys()}
 
-    macro = load_macro_data()
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # This shouldn't happen based on the design, but just in case, we can run it in a new thread
+        import threading
+        macro = None
+        def run_in_thread():
+            nonlocal macro
+            macro = asyncio.run(load_macro_data())
+        t = threading.Thread(target=run_in_thread)
+        t.start()
+        t.join()
+    else:
+        macro = asyncio.run(load_macro_data())
+
     if macro.empty:
         return {k: {"value": "N/A", "date": "No Data"} for k in SERIES.keys()}
 
@@ -110,7 +140,23 @@ def get_macro_summary() -> Dict[str, Any]:
 
 
 def enrich_macro_data(market_data: pd.DataFrame) -> pd.DataFrame:
-    macro = load_macro_data()
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # This shouldn't happen based on the design, but just in case, we can run it in a new thread
+        import threading
+        macro = None
+        def run_in_thread():
+            nonlocal macro
+            macro = asyncio.run(load_macro_data())
+        t = threading.Thread(target=run_in_thread)
+        t.start()
+        t.join()
+    else:
+        macro = asyncio.run(load_macro_data())
 
     if macro.empty:
         aligned = pd.DataFrame(index=market_data.index)

@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -28,16 +29,19 @@ def build_market_dataset(ticker: str, period: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
+async def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
     try:
-        dataset = build_market_dataset(ticker, period)
+        # Run synchronous blocking tasks in a separate thread
+        dataset = await asyncio.to_thread(build_market_dataset, ticker, period)
+        macro_summary = await asyncio.to_thread(get_macro_summary)
 
         live_symbols = ["^GSPC", "^IXIC", "^VIX"]
+
+        # Concurrently fetch live tickers
+        live_infos = await asyncio.gather(*(fetch_live_ticker(sym) for sym in live_symbols))
+
         live_data = []
-
-        for symbol in live_symbols:
-            info = fetch_live_ticker(symbol)
-
+        for symbol, info in zip(live_symbols, live_infos):
             if symbol == "^GSPC":
                 info["symbol"] = "S&P 500"
             elif symbol == "^IXIC":
@@ -47,9 +51,7 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
 
             live_data.append(info)
 
-        macro_summary = get_macro_summary()
-
-        figure = create_dashboard(dataset, live_data, macro_summary)
+        figure = await asyncio.to_thread(create_dashboard, dataset, live_data, macro_summary)
         chart_json = figure.to_json()
 
         html = f"""
