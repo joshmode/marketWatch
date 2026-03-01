@@ -28,7 +28,7 @@ def test_calculate_atr(mock_market_data):
 
 def test_calculate_volatility_z_score(mock_market_data):
     mock_market_data['ATR_14'] = calculate_atr(mock_market_data, window=14)
-    z_score = calculate_volatility_z_score(mock_market_data, atr_col='ATR_14', window=50)
+    z_score = calculate_volatility_z_score(mock_market_data, atr_column='ATR_14', window=50)
     assert len(z_score) == len(mock_market_data)
 
 def test_calculate_macd(mock_market_data):

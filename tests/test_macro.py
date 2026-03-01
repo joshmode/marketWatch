@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
@@ -6,7 +7,7 @@ from app.macro import load_macro_data, enrich_macro_data
 
 @pytest.fixture
 def mock_fetch_series():
-    with patch("app.macro._fetch_series") as mock:
+    with patch("app.macro.fetch_series", new_callable=AsyncMock) as mock:
         yield mock
 
 @patch("app.macro.FRED_API_KEY", "fake_key")
@@ -15,7 +16,8 @@ def test_load_macro_data(mock_fetch_series):
     mock_series = pd.Series(np.random.rand(100), index=pd.date_range("2020-01-01", periods=100))
     mock_fetch_series.return_value = mock_series
 
-    df = load_macro_data()
+    import asyncio
+    df = asyncio.run(load_macro_data())
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
     assert "growth" in df.columns # Check if keys from SERIES are present
