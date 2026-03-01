@@ -1,6 +1,7 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
 
 from app.data import fetch_data, fetch_live_ticker
 from app.indicators import add_indicators
@@ -15,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Macro Signal Engine")
 
+templates = Jinja2Templates(directory="app/templates")
+
 
 def build_market_dataset(ticker: str, period: str):
     price_data = fetch_data(ticker, period)
@@ -28,7 +31,7 @@ def build_market_dataset(ticker: str, period: str):
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
+def dashboard_view(request: Request, ticker: str = "^GSPC", period: str = "2y"):
     try:
         dataset = build_market_dataset(ticker, period)
 
@@ -52,45 +55,14 @@ def dashboard_view(ticker: str = "^GSPC", period: str = "2y"):
         figure = create_dashboard(dataset, live_data, macro_summary)
         chart_json = figure.to_json()
 
-        html = f"""
-        <html>
-        <head>
-            <title>marketWatch by @joshmode</title>
-            <style>
-                body {{ font-family: sans-serif; background-color: #111; color: #eee; margin: 0; padding: 20px; }}
-                .container {{ max_width: 1600px; margin: 0 auto; }}
-                .macro-table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9em; }}
-                .macro-table th, .macro-table td {{ padding: 8px; text-align: left; border-bottom: 1px solid #333; }}
-                .macro-table th {{ color: #888; }}
-                h2 {{ color: #00ffcc; }}
-            </style>
-        </head>
-        <body>
-        <div class="container">
-            <h2>marketWatch by @joshmode</h2>
-
-            <div style="display: grid; grid-template-columns: 1fr 3fr; gap: 20px;">
-                <div>
-                    <h3>Macro State</h3>
-                    <table class="macro-table">
-                        <tr><th>Indicator</th><th>Value</th><th>Date</th></tr>
-                        {''.join([f"<tr><td>{k}</td><td>{v['value']}</td><td>{v['date']}</td></tr>" for k, v in macro_summary.items()])}
-                    </table>
-                </div>
-                <div id="chart"></div>
-            </div>
-        </div>
-
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <script>
-        var chart = {chart_json};
-        Plotly.newPlot('chart', chart.data, chart.layout);
-        </script>
-        </body>
-        </html>
-        """
-
-        return HTMLResponse(html)
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "macro_summary": macro_summary,
+                "chart_json": chart_json,
+            },
+        )
 
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
