@@ -48,24 +48,23 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
     regime_names = list(regime_templates.keys())
     prior = np.full(len(regime_names), 1 / len(regime_names))
 
+    n_rows = len(market_data)
+    n_regimes = len(regime_names)
+
+    all_likelihoods = np.ones((n_rows, n_regimes))
+
+    for i, regime in enumerate(regime_names):
+        for factor, (mean, std) in regime_templates[regime].items():
+            factor_data = market_data[factor].values
+            all_likelihoods[:, i] *= _normal_pdf(factor_data, mean, std)
+
     probability_path = []
 
-    for _, row in market_data.iterrows():
-        likelihoods = []
-
-        for regime in regime_names:
-            regime_definition = regime_templates[regime]
-
-            likelihood = 1.0
-            for factor, (mean, std) in regime_definition.items():
-                likelihood *= _normal_pdf(row[factor], mean, std)
-
-            likelihoods.append(likelihood)
-
-        likelihoods = np.array(likelihoods)
+    for i in range(n_rows):
+        likelihoods = all_likelihoods[i]
 
         if likelihoods.sum() == 0:
-            likelihoods[:] = 1 / len(likelihoods)
+            likelihoods = np.full(n_regimes, 1.0 / n_regimes)
 
         posterior = prior * likelihoods
         posterior /= posterior.sum()
@@ -73,7 +72,7 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
         probability_path.append(posterior)
 
         # smooth transition so regimes don't flip unrealistically fast
-        prior = posterior * 0.9 + (1 / len(prior)) * 0.1
+        prior = posterior * 0.9 + (1.0 / n_regimes) * 0.1
 
     regime_df = pd.DataFrame(
         probability_path,
