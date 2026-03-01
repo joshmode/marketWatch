@@ -1,5 +1,4 @@
 import logging
-import pickle
 import pandas as pd
 import requests
 import time
@@ -18,8 +17,9 @@ def ensure_cache_directory():
 
 
 def cache_file_path(ticker: str, period: str) -> Path:
-    safe_ticker = ticker.replace("^", "").replace(".", "_")
-    return CACHE_DIR / f"{safe_ticker}_{period}.pkl"
+    safe_ticker = "".join(c for c in ticker if c.isalnum() or c in ("-", "_"))
+    safe_period = "".join(c for c in period if c.isalnum() or c in ("-", "_"))
+    return CACHE_DIR / f"{safe_ticker}_{safe_period}.csv"
 
 
 def load_cached_data(ticker: str, period: str) -> Optional[pd.DataFrame]:
@@ -34,9 +34,9 @@ def load_cached_data(ticker: str, period: str) -> Optional[pd.DataFrame]:
         if datetime.now() - modified_time > timedelta(hours=12):
             return None
 
-        with open(path, "rb") as f:
-            logger.info(f"Loaded cached data for {ticker}")
-            return pickle.load(f)
+        df = pd.read_csv(path, index_col="Date", parse_dates=True)
+        logger.info(f"Loaded cached data for {ticker}")
+        return df
 
     except Exception as e:
         logger.warning(f"Failed to load cache for {ticker}: {e}")
@@ -48,8 +48,7 @@ def write_cache(ticker: str, period: str, data: pd.DataFrame):
     path = cache_file_path(ticker, period)
 
     try:
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        data.to_csv(path)
         logger.info(f"Cached data for {ticker}")
     except Exception as e:
         logger.warning(f"Failed to write cache for {ticker}: {e}")
