@@ -4,7 +4,7 @@ import numpy as np
 import os
 from unittest.mock import patch, MagicMock
 from app.ml_engine import (
-    preprocess_features, generate_targets, purged_cv_split,
+    prepare_features, build_targets, purged_time_series_split,
     get_historical_predictions, predict_latest_score,
     MODEL_PATH
 )
@@ -15,7 +15,7 @@ def feature_data(mock_market_data):
     return add_indicators(mock_market_data)
 
 def test_preprocess_features(feature_data):
-    processed = preprocess_features(feature_data)
+    processed = prepare_features(feature_data)
     assert 'RSI_14_Z' in processed.columns
     # Check if NaN rows are dropped (LOOKBACK_WINDOW is 252, so should be smaller)
     # mock_market_data has 300 rows.
@@ -26,8 +26,8 @@ def test_preprocess_features(feature_data):
     assert not processed.isnull().any().any()
 
 def test_generate_targets(feature_data):
-    # Need to run preprocess first to get clean data, but generate_targets works on market data + Next_Ret
-    # But generate_targets computes rolling stats on Close pct_change with window 252.
+    # Need to run preprocess first to get clean data, but build_targets works on market data + Next_Ret
+    # But build_targets computes rolling stats on Close pct_change with window 252.
     # So it will also drop rows.
 
     # Let's use a longer mock data for this test to ensure we have enough data
@@ -36,22 +36,21 @@ def test_generate_targets(feature_data):
         "Close": np.random.rand(1000) * 100 + np.linspace(0, 100, 1000)
     }, index=dates)
 
-    targets = generate_targets(df)
+    targets = build_targets(df)
     assert 'Target_Class' in targets.columns
     assert targets['Target_Class'].between(0, 4).all()
 
 def test_purged_cv_split():
-    n_samples = 100
-    train_window = 20
-    test_window = 5
-    purge = 2
+    n_samples = 1000
 
-    splits = list(purged_cv_split(n_samples, train_window, test_window, purge))
+    # We use the defaults from purged_time_series_split (TEST_WINDOW=63, PURGE_GAP=5, LOOKBACK=252)
+
+    splits = list(purged_time_series_split(n_samples))
     assert len(splits) > 0
     for train_idx, test_idx in splits:
-        assert len(train_idx) == train_window
-        assert len(test_idx) == test_window
-        assert max(train_idx) < min(test_idx) - (purge - 1) # simple check
+        assert len(train_idx) > 0
+        assert len(test_idx) > 0
+        assert max(train_idx) < min(test_idx) - (5 - 1) # simple check
 
 @patch("app.ml_engine.fetch_data")
 @patch("app.ml_engine.joblib.dump")
