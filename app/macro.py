@@ -86,6 +86,10 @@ def load_macro_data() -> pd.DataFrame:
 
 
 def get_macro_summary() -> Dict[str, Any]:
+    now = datetime.now()
+    if "__macro_summary__" in _cache and now < _cache_expiry.get("__macro_summary__", datetime.min):
+        return _cache["__macro_summary__"]
+
     if not FRED_API_KEY:
         return {k: {"value": "N/A", "date": "No API Key"} for k in SERIES.keys()}
 
@@ -105,6 +109,9 @@ def get_macro_summary() -> Dict[str, Any]:
                 "value": round(series.iloc[-1], 2),
                 "date": series.index[-1].strftime("%Y-%m-%d"),
             }
+
+    _cache["__macro_summary__"] = summary
+    _cache_expiry["__macro_summary__"] = now + timedelta(hours=1)
 
     return summary
 
