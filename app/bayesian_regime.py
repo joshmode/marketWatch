@@ -2,13 +2,13 @@ import numpy as np
 import pandas as pd
 
 
-def _normal_pdf(x, mean, std):
-    std = max(std, 1e-6)
-    return np.exp(-0.5 * ((x - mean) / std) ** 2) / (std * np.sqrt(2 * np.pi))
+def _normal_pdf(x, m, s):
+    s = max(s, 1e-6)
+    return np.exp(-0.5 * ((x - m) / s) ** 2) / (s * np.sqrt(2 * np.pi))
 
 
-def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
-    required_fields = [
+def compute_bayesian_regime(df):
+    req = [
         "macro_score",
         "credit_stress_z",
         "curve_slope",
@@ -16,12 +16,11 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
         "dollar_regime_z"
     ]
 
-    for field in required_fields:
-        if field not in market_data.columns:
-            market_data[field] = 0.0
+    for c in req:
+        if c not in df.columns:
+            df[c] = 0.0
 
-    # each regime defined by how it "expects" each macro input to behave
-    regime_templates = {
+    tmpl = {
         "Expansion": {
             "macro_score": (1.0, 0.8),
             "credit_stress_z": (-0.5, 1.0),
@@ -45,42 +44,38 @@ def compute_bayesian_regime(market_data: pd.DataFrame) -> pd.DataFrame:
         },
     }
 
-    regime_names = list(regime_templates.keys())
-    prior = np.full(len(regime_names), 1 / len(regime_names))
+    names = list(tmpl.keys())
+    n = len(df)
+    n_reg = len(names)
 
-    probability_path = []
+    lik = np.ones((n, n_reg))
 
-    for _, row in market_data.iterrows():
-        likelihoods = []
+    for j, name in enumerate(names):
+        for f, (m, s) in tmpl[name].items():
+            vals = df[f].to_numpy()
+            lik[:, j] *= _normal_pdf(vals, m, s)
 
-        for regime in regime_names:
-            regime_definition = regime_templates[regime]
+    prior = np.full(n_reg, 1.0 / n_reg)
+    probs = []
 
-            likelihood = 1.0
-            for factor, (mean, std) in regime_definition.items():
-                likelihood *= _normal_pdf(row[factor], mean, std)
+    for i in range(n):
+        r_lik = lik[i]
 
-            likelihoods.append(likelihood)
+        if r_lik.sum() == 0:
+            r_lik[:] = 1.0 / n_reg
 
-        likelihoods = np.array(likelihoods)
+        post = prior * r_lik
+        post /= post.sum()
 
-        if likelihoods.sum() == 0:
-            likelihoods[:] = 1 / len(likelihoods)
+        probs.append(post)
+        prior = post * 0.9 + (1.0 / n_reg) * 0.1
 
-        posterior = prior * likelihoods
-        posterior /= posterior.sum()
-
-        probability_path.append(posterior)
-
-        # smooth transition so regimes don't flip unrealistically fast
-        prior = posterior * 0.9 + (1 / len(prior)) * 0.1
-
-    regime_df = pd.DataFrame(
-        probability_path,
-        columns=[f"P_{name}" for name in regime_names],
-        index=market_data.index
+    res = pd.DataFrame(
+        probs,
+        columns=[f"P_{name}" for name in names],
+        index=df.index
     )
 
-    regime_df["Regime"] = regime_df.idxmax(axis=1).str.replace("P_", "")
+    res["Regime"] = res.idxmax(axis=1).str.replace("P_", "")
 
-    return regime_df
+    return res
