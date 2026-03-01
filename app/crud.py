@@ -25,21 +25,21 @@ def save_market_data(db: Session, market_data: pd.DataFrame, ticker: str):
     data_to_store = data_to_store.replace({np.nan: None})
 
     records = []
-    for date, row in data_to_store.iterrows():
+    for row in data_to_store.itertuples():
         records.append(
             MarketData(
                 ticker=ticker,
-                date=date,
-                open=row["Open"],
-                high=row["High"],
-                low=row["Low"],
-                close=row["Close"],
-                volume=row["Volume"],
-                sma_200=row["SMA_200"],
-                rsi_14=row["RSI_14"],
-                atr_14=row["ATR_14"],
-                atr_z=row["ATR_Z"],
-                regime=row["Regime"],
+                date=row.Index,
+                open=row.Open,
+                high=row.High,
+                low=row.Low,
+                close=row.Close,
+                volume=row.Volume,
+                sma_200=row.SMA_200,
+                rsi_14=row.RSI_14,
+                atr_14=row.ATR_14,
+                atr_z=row.ATR_Z,
+                regime=row.Regime,
             )
         )
 
