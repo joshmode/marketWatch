@@ -50,7 +50,7 @@ def test_fetch_data_success(mock_response):
 
         args, kwargs = mock_get.call_args
         assert "finance.yahoo.com" in args[0]
-        assert "^GSPC" in args[0]
+        assert "%5EGSPC" in args[0]
 
         mock_write_cache.assert_called_once()
 
