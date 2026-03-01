@@ -1,6 +1,7 @@
 import os
 import logging
-import requests
+import asyncio
+import httpx
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -35,7 +36,7 @@ def _series_or_nan(df: pd.DataFrame, column: str) -> pd.Series:
     return pd.Series(index=df.index, dtype=float)
 
 
-def fetch_series(series_id: str) -> pd.Series:
+async def fetch_series(series_id: str, client: httpx.AsyncClient) -> pd.Series:
     now = datetime.now()
 
     if series_id in _cache and now < _cache_expiry.get(series_id, datetime.min):
@@ -48,7 +49,7 @@ def fetch_series(series_id: str) -> pd.Series:
     }
 
     try:
-        response = requests.get(FRED_URL, params=params, timeout=10)
+        response = await client.get(FRED_URL, params=params, timeout=10.0)
         response.raise_for_status()
 
         observations = response.json().get("observations", [])
@@ -59,7 +60,8 @@ def fetch_series(series_id: str) -> pd.Series:
         else:
             df["value"] = pd.to_numeric(df["value"], errors="coerce")
             df["date"] = pd.to_datetime(df["date"])
-            series = df.set_index("date")["value"]
+            # Memory explicit instruction: All time-series data must be explicitly sorted by index (`df.sort_index()`) immediately after loading.
+            series = df.set_index("date")["value"].sort_index()
 
         _cache[series_id] = series
         _cache_expiry[series_id] = now + timedelta(hours=24)
@@ -71,18 +73,55 @@ def fetch_series(series_id: str) -> pd.Series:
         return pd.Series(dtype=float)
 
 
-def load_macro_data() -> pd.DataFrame:
+async def _load_macro_data_async() -> pd.DataFrame:
     if not FRED_API_KEY:
         logger.warning("FRED_API_KEY not set. Running in neutral macro mode.")
         return pd.DataFrame()
 
-    data = {name: fetch_series(code) for name, code in SERIES.items()}
-    macro = pd.DataFrame(data)
+    async with httpx.AsyncClient() as client:
+        names = list(SERIES.keys())
+        tasks = [fetch_series(code, client) for code in SERIES.values()]
+        results = await asyncio.gather(*tasks)
 
+        data = dict(zip(names, results))
+
+    macro = pd.DataFrame(data)
     macro = macro.ffill()
     macro.dropna(how="all", inplace=True)
 
     return macro
+
+
+def load_macro_data() -> pd.DataFrame:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # If an event loop is already running (e.g., in a testing context or specific async runner),
+        # we cannot use asyncio.run(). Instead, we run the async task in a separate thread.
+        import threading
+
+        result = None
+        exception = None
+
+        def _run_in_thread():
+            nonlocal result, exception
+            try:
+                result = asyncio.run(_load_macro_data_async())
+            except Exception as e:
+                exception = e
+
+        thread = threading.Thread(target=_run_in_thread)
+        thread.start()
+        thread.join()
+
+        if exception:
+            raise exception
+        return result
+    else:
+        return asyncio.run(_load_macro_data_async())
 
 
 def get_macro_summary() -> Dict[str, Any]:
