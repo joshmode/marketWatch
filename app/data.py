@@ -4,6 +4,8 @@ import pandas as pd
 import requests
 import time
 import random
+import asyncio
+import httpx
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -193,6 +195,69 @@ def fetch_live_ticker(ticker: str) -> Dict[str, Any]:
 
         except Exception:
             continue
+
+    return {
+        "symbol": ticker,
+        "price": 0.0,
+        "change": 0.0,
+        "pct_change": 0.0,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+async def fetch_live_ticker_async(ticker: str) -> Dict[str, Any]:
+    params = {
+        "range": "1d",
+        "interval": "1m",
+        "includePrePost": "true",
+    }
+
+    endpoints = [
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}",
+        f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}",
+    ]
+
+    async with httpx.AsyncClient() as client:
+        for url in endpoints:
+            try:
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                response = await client.get(url, params=params, headers=request_headers(), timeout=10)
+                if response.status_code == 429:
+                    continue
+
+                response.raise_for_status()
+                payload = response.json()
+
+                result = payload.get("chart", {}).get("result", [])
+                if not result:
+                    continue
+
+                meta = result[0].get("meta", {})
+                price = meta.get("regularMarketPrice")
+                prev_close = meta.get("chartPreviousClose")
+
+                if price is None:
+                    quote = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    closes = quote.get("close", [])
+                    valid_closes = [c for c in closes if c is not None]
+                    if valid_closes:
+                        price = valid_closes[-1]
+
+                if price is None or prev_close is None:
+                    continue
+
+                change = price - prev_close
+                pct_change = (change / prev_close) * 100
+
+                return {
+                    "symbol": ticker,
+                    "price": round(price, 2),
+                    "change": round(change, 2),
+                    "pct_change": round(pct_change, 2),
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            except Exception:
+                continue
 
     return {
         "symbol": ticker,
